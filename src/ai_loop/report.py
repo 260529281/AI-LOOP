@@ -44,8 +44,12 @@ def write_report(run: Run, cfg: Config, task: dict) -> None:
             label = verdict.get("label", "stage")
             lines.append(f"### {sid} · {label} · 第 {verdict['attempt']} 次 → {verdict['verdict']}")
             for item in verdict.get("criteria", []):
-                mark = "PASS" if item.get("passed") else "FAIL"
+                passed = item.get("passed")
+                mark = "SKIP" if passed is None else ("PASS" if passed else "FAIL")
                 lines.append(f"- {mark} `{item.get('id')}` {item.get('text')} — {item.get('evidence')}")
+            skipped = verdict.get("skipped_semantic") or []
+            if skipped:
+                lines.append(f"- 未机检（语义验收，确定性模式不判）：{', '.join(skipped)}，需审批官或人工确认")
             for block in verdict.get("blocking", []):
                 source = block.get("source", "L2")
                 reason = block.get("reason") or block.get("text") or ""

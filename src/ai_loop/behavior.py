@@ -10,40 +10,8 @@ import re
 
 from .context import Ctx
 
-PROBES = {
-    "default_all": {
-        "text": "默认全开：白名单初值来自表情全集",
-        "any": [
-            r"Emotion\.(?:entries|values\(\))[^\n]{0,60}to(?:Set|MutableSet)\(\)",
-            r"EnumSet\.allOf\(\s*Emotion",
-            r"Emotion\.(?:entries|values\(\))[^\n]{0,80}all",
-        ],
-    },
-    "persisted": {
-        "text": "勾选持久化：写进本地存储，启动时还能读回",
-        "all": [
-            r"(?:getStringSet|getString|getBoolean)\(",
-            r"(?:putStringSet|putString|putBoolean)\(",
-            r"(?i)\"[^\"]*(?:mood|emotion|allow|white)[^\"]*\"",
-        ],
-    },
-    "fallback": {
-        "text": "未勾选回退平常：不在白名单时落到 NEUTRAL",
-        "any": [
-            r"\bin\b[^\n]{0,120}else[^\n]{0,80}NEUTRAL",
-            r"(?:contains\(|not\s+in\b|!in\b)[^\n]{0,160}NEUTRAL",
-            r"resolve\([^\n]{0,200}NEUTRAL",
-        ],
-    },
-    "toggle_ui": {
-        "text": "设置页逐项开关：每个表情一个控件，勾选即生效",
-        "all": [
-            r"(?:Checkbox|Switch)\s*\(",
-            r"onCheckedChange",
-            r"Emotion\.(?:entries|values\(\))",
-        ],
-    },
-}
+# 可复用探针库：任务专属探针写在任务卡的 implement.probes 里，通用探针才放这里。
+PROBES: dict = {}
 
 
 def _changed_files(ctx: Ctx) -> dict[str, str]:
@@ -55,12 +23,17 @@ def _changed_files(ctx: Ctx) -> dict[str, str]:
     return texts
 
 
-def run_probes(ctx: Ctx, names: list[str] | None = None) -> dict:
-    wanted = names or list(PROBES)
-    blob = "\n".join(_changed_files(ctx).values())
+def changed_blob(ctx: Ctx) -> str:
+    return "\n".join(_changed_files(ctx).values())
+
+
+def run_probes(ctx: Ctx, names: list[str] | None = None, specs: dict | None = None) -> dict:
+    registry = {**PROBES, **(specs or {})}
+    wanted = names if names is not None else list(registry)
+    blob = changed_blob(ctx)
     results = {}
     for name in wanted:
-        probe = PROBES.get(name)
+        probe = registry.get(name)
         if not probe:
             results[name] = {"ok": False, "text": name, "detail": "没有这个探针"}
             continue

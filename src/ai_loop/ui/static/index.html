@@ -52,6 +52,18 @@
           <label class="check"><input type="checkbox" id="drill"> 注入缺陷演练（验证门禁能否拦住）</label>
         </div>
       </details>
+      <details class="advanced" id="new-card-panel">
+        <summary>新建任务卡（新任务从这里开始）</summary>
+        <div class="advanced-body col">
+          <input id="card-title" placeholder="标题，例如：设置页加夜间模式">
+          <textarea id="card-requirement" rows="4" spellcheck="false" placeholder="需求正文：要做什么、范围边界"></textarea>
+          <textarea id="card-acceptance" rows="4" spellcheck="false" placeholder="验收清单：一行一条，例如「开关状态重启后保留」"></textarea>
+          <input id="card-paths" placeholder="允许改动路径，逗号分隔，例如 app/src/main/java/**">
+          <input id="card-keywords" placeholder="可选：机检关键词，逗号分隔（补丁改到的文件里必须出现这些词）">
+          <div class="hint">保存后自动选中这张卡；语义验收在外部校验里标「未机检」，闭环跑由审批官判。</div>
+          <div class="row-end"><button class="primary" id="btn-create-card">保存任务卡</button></div>
+        </div>
+      </details>
       <details class="advanced">
         <summary>校验外部补丁（不调用模型）</summary>
         <div class="advanced-body col">

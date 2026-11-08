@@ -197,7 +197,7 @@ def verify_patch(task_path: str, patch_text: str, run_id: str | None = None) -> 
     run.save()
     run.log("run_start", task=task["id"], backend="verify", mode="verify")
 
-    stage = cfg.stage("s2-implement")
+    stage = next(s for s in cfg.stages_for(task) if s["id"] == "s2-implement")
     run.log("stage_start", stage["id"])
     patch_text = patch_text.strip() + "\n"
     run.write_artifact(stage["id"], "change.patch", patch_text)
@@ -209,7 +209,9 @@ def verify_patch(task_path: str, patch_text: str, run_id: str | None = None) -> 
 
     l1 = checks.run_l1(ctx)
     if stage.get("behavior"):
-        behavior.run_probes(ctx, stage["behavior"].get("probes"))
+        behavior.run_probes(
+            ctx, stage["behavior"].get("probes"), specs=stage["behavior"].get("specs")
+        )
     verdict = arbiter.judge(ctx, l1)
 
     run.state["attempts"][stage["id"]] = 1
@@ -217,7 +219,7 @@ def verify_patch(task_path: str, patch_text: str, run_id: str | None = None) -> 
     run.state["status"] = "passed" if verdict["verdict"] == "pass" else "blocked"
     run.state["stage"] = None
     run.save()
-    run.log("run_end", status=run.state["status"], mode="verify")
+    run.log("run_end", status=run.state["status"], mode="verify", skipped_semantic=verdict.get("skipped_semantic", []))
     write_report(run, cfg, task)
     return run
 
@@ -235,7 +237,7 @@ def run_pipeline(task_path: str, drill: bool = False, run_id: str | None = None)
 
     verdicts: dict = {}
     history: dict = {}
-    for stage in cfg.stages:
+    for stage in cfg.stages_for(task):
         ctx = Ctx(
             cfg=cfg,
             run=run,
@@ -277,7 +279,9 @@ def run_pipeline(task_path: str, drill: bool = False, run_id: str | None = None)
 
             l1 = checks.run_l1(ctx)
             if stage.get("behavior"):
-                behavior.run_probes(ctx, stage["behavior"].get("probes"))
+                behavior.run_probes(
+                    ctx, stage["behavior"].get("probes"), specs=stage["behavior"].get("specs")
+                )
             if arbiter_llm is None:
                 verdict = arbiter.judge(ctx, l1)
             else:
@@ -313,6 +317,7 @@ def run_pipeline(task_path: str, drill: bool = False, run_id: str | None = None)
     run.state["status"] = "passed"
     run.state["stage"] = None
     run.save()
-    run.log("run_end", status="passed")
+    skipped = sorted({sid for v in verdicts.values() for sid in v.get("skipped_semantic", [])})
+    run.log("run_end", status="passed", skipped_semantic=skipped)
     write_report(run, cfg, task)
     return run

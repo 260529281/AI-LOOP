@@ -239,6 +239,42 @@ def _health() -> dict:
     }
 
 
+def _create_task(body: dict) -> dict:
+    title = str(body.get("title") or "").strip()
+    requirement = str(body.get("requirement") or "").strip()
+    acceptance = [str(x).strip() for x in (body.get("acceptance") or []) if str(x).strip()]
+    paths = [str(x).strip() for x in (body.get("patch_paths") or []) if str(x).strip()]
+    keywords = [str(x).strip() for x in (body.get("keywords") or []) if str(x).strip()]
+    if not title:
+        raise ValueError("请填写标题")
+    if not requirement:
+        raise ValueError("请填写需求正文")
+    if not acceptance:
+        raise ValueError("至少写一条验收")
+    if not paths:
+        raise ValueError("至少写一条允许改动路径")
+
+    base = "card-" + time.strftime("%Y%m%d-%H%M%S")
+    task_id, n = base, 1
+    while (TASKS / f"{task_id}.yaml").exists():
+        n += 1
+        task_id = f"{base}-{n}"
+    card = {
+        "id": task_id,
+        "title": title,
+        "requirement": requirement,
+        "acceptance": acceptance,
+        "risk_tier": "medium",
+        "patch_paths": paths,
+    }
+    if keywords:
+        card["implement"] = {"keywords": keywords}
+    path = TASKS / f"{task_id}.yaml"
+    TASKS.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(card, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return {"task_id": task_id, "file": path.name}
+
+
 def _spawn_run(body: dict) -> dict:
     task_id = str(body.get("task_id") or "").strip()
     if not task_id:
@@ -501,6 +537,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             body = self._body()
+            if path == "/api/tasks":
+                return self._json(200, _create_task(body))
             if path == "/api/runs":
                 return self._json(200, _spawn_run(body))
             if path == "/api/verify":

@@ -142,14 +142,14 @@ button, select, textarea, input { font: inherit; color: inherit; }
 
 .field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
 
-select, textarea {
+select, textarea, input:not([type="checkbox"]) {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 7px 9px;
   outline: none;
 }
-select:focus, textarea:focus { border-color: #33507e; }
+select:focus, textarea:focus, input:not([type="checkbox"]):focus { border-color: #33507e; }
 
 #task-select { min-width: 0; width: 100%; }
 

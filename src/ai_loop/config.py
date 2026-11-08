@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import copy
 import os
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+
+MECHANICAL_CRITERIA = [
+    {"id": "C1", "text": "改动只落在允许的路径内", "check": {"type": "evidence_true", "key": "scope_ok"}},
+    {"id": "C2", "text": "补丁能干净应用到项目副本", "check": {"type": "evidence_true", "key": "patch_applied"}},
+    {"id": "C3", "text": "assembleDebug 通过", "check": {"type": "evidence_true", "key": "build_ok"}},
+]
 
 
 def load_yaml(path: str | Path) -> dict:
@@ -54,6 +61,53 @@ class Config:
             if stage["id"] == stage_id:
                 return stage
         raise KeyError(stage_id)
+
+    def stages_for(self, task: dict) -> list[dict]:
+        """验收归任务卡：workflow 只定义流程机制，s2 的标准/探针/允许路径由卡自带。
+
+        卡没写 criteria 时按机械三条 + 关键词 + 探针 + 逐条语义验收推导；
+        语义验收在确定性模式（桩/外部校验）标未机检，闭环跑交给审批官判。
+        """
+        impl = task.get("implement") or {}
+        out: list[dict] = []
+        s2_criteria: list[dict] | None = None
+        for raw in self.stages:
+            stage = copy.deepcopy(raw)
+            if stage["id"] == "s2-implement":
+                stage["patch_scope"] = (
+                    impl.get("patch_scope") or task.get("patch_paths") or stage.get("patch_scope") or []
+                )
+                if impl.get("source_context"):
+                    stage["source_context"] = impl["source_context"]
+                specs = {p["id"]: p for p in impl.get("probes") or []}
+                names = list((stage.get("behavior") or {}).get("probes") or []) + list(specs)
+                stage["behavior"] = {"probes": names, "specs": specs}
+                criteria = impl.get("criteria")
+                if criteria is None:
+                    criteria = copy.deepcopy(MECHANICAL_CRITERIA)
+                    if impl.get("keywords"):
+                        criteria.append(
+                            {
+                                "id": "K1",
+                                "text": "补丁改到的文件里包含约定的机检关键词",
+                                "check": {"type": "patch_contains_all", "needles": impl["keywords"]},
+                            }
+                        )
+                    for pid in specs:
+                        criteria.append(
+                            {"id": pid, "text": specs[pid]["text"], "check": {"type": "behavior", "probe": pid}}
+                        )
+                    for i, line in enumerate(task.get("acceptance") or [], 1):
+                        criteria.append({"id": f"A{i}", "text": str(line), "check": {"type": "semantic"}})
+                stage["criteria"] = criteria
+                s2_criteria = criteria
+            if stage["id"] == "s4-accept" and s2_criteria is not None:
+                for item in stage.get("criteria", []):
+                    check = item.get("check", {})
+                    if check.get("type") == "artifact_contains_all" and "PASS" in check.get("needles", []):
+                        check["needles"] = ["PASS"] + [c["id"] for c in s2_criteria]
+            out.append(stage)
+        return out
 
     @property
     def backend(self) -> str:

@@ -61,10 +61,18 @@ def _acceptance(ctx: Ctx) -> str:
     verdict = ctx.verdicts.get("s2-implement", {})
     rows = []
     for item in verdict.get("criteria", []):
-        mark = "PASS" if item["passed"] else "FAIL"
+        passed = item.get("passed")
+        mark = "SKIP" if passed is None else ("PASS" if passed else "FAIL")
         rows.append(f"| {item['id']} | {item['text']} | {mark} | {item['evidence']} |")
     ok = verdict.get("verdict") == "pass"
+    skipped = verdict.get("skipped_semantic") or []
     evidence = _s2_evidence(ctx)
+    if ok and skipped:
+        summary = f"PASS：机检标准全部通过；语义验收项 {', '.join(skipped)} 未机检，需审批官或人工确认。"
+    elif ok:
+        summary = "PASS：实现满足需求卡全部验收项。"
+    else:
+        summary = "FAIL：存在未通过的验收标准，不能交付。"
     return f"""# 验收结论（acceptance）
 
 依据：`s1-decompose/spec.md`、`s2-implement/change.patch`、`s3-review/review.md`
@@ -75,7 +83,7 @@ def _acceptance(ctx: Ctx) -> str:
 {chr(10).join(rows)}
 
 ## 总结
-{"PASS：实现满足需求卡全部验收项。" if ok else "FAIL：存在未通过的验收标准，不能交付。"}
+{summary}
 """
 
 

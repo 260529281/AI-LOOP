@@ -432,14 +432,18 @@ function renderEvent(ev) {
       return el("div", "banner bad", `返工预算用尽，流水线停住等人：${ev.reason || ""}`);
     case "run_end": {
       const yes = ev.status === "passed";
+      const skipped = ev.skipped_semantic || [];
+      const skipNote = skipped.length
+        ? ` 语义验收 ${skipped.join("、")} 未机检（确定性模式不判），落地前请人工确认或跑闭环由审批官判。`
+        : "";
       if (ev.mode === "verify") {
         return el("div", "banner " + (yes ? "ok" : "bad"),
           yes
-            ? "校验通过：补丁能应用、构建通过、行为探针全过。可以预检或落地。"
+            ? "校验通过：补丁能应用、构建通过、机检标准全过。可以预检或落地。" + skipNote
             : "校验没通过：看上面卡在哪一项（机械校验或行为探针）。");
       }
       return el("div", "banner " + (yes ? "ok" : "bad"),
-        yes ? "闭环通过：产物已齐，可以预检或落地补丁。" : "本次运行没通过。");
+        yes ? "闭环通过：产物已齐，可以预检或落地补丁。" + skipNote : "本次运行没通过。");
     }
     case "report":
       return el("div", "sys", "运行报告已生成 · 见右侧「运行报告」");
@@ -527,7 +531,7 @@ function renderReport(detail) {
 
 /* ---------- 发起运行 ---------- */
 
-function fillTasks() {
+function fillTasks(prefer) {
   const sel = $("#task-select");
   sel.textContent = "";
   state.tasks.forEach((t) => {
@@ -535,9 +539,40 @@ function fillTasks() {
     opt.value = t.task_id;
     sel.appendChild(opt);
   });
-  if (state.tasks.length) {
-    sel.value = state.tasks[0].task_id;
-    $("#requirement").value = state.tasks[0].requirement || "";
+  const chosen = state.tasks.find((t) => t.task_id === prefer) || state.tasks[0];
+  if (chosen) {
+    sel.value = chosen.task_id;
+    $("#requirement").value = chosen.requirement || "";
+  }
+}
+
+function splitList(text) {
+  return String(text || "").split(/[\n,，]/).map((s) => s.trim()).filter(Boolean);
+}
+
+async function createTask() {
+  const btn = $("#btn-create-card");
+  btn.disabled = true;
+  try {
+    const payload = {
+      title: $("#card-title").value.trim(),
+      requirement: $("#card-requirement").value.trim(),
+      acceptance: splitList($("#card-acceptance").value),
+      patch_paths: splitList($("#card-paths").value),
+      keywords: splitList($("#card-keywords").value),
+    };
+    const out = await api("/api/tasks", { method: "POST", body: payload });
+    const tasks = await api("/api/tasks");
+    state.tasks = tasks.tasks;
+    fillTasks(out.task_id);
+    ["#card-title", "#card-requirement", "#card-acceptance", "#card-paths", "#card-keywords"]
+      .forEach((s) => { $(s).value = ""; });
+    $("#new-card-panel").open = false;
+    toast(`任务卡已保存：${out.file}，已选中，可直接开始闭环或校验外部补丁`);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -613,6 +648,7 @@ async function startVerify() {
 
 $("#btn-start").onclick = startRun;
 $("#btn-verify").onclick = startVerify;
+$("#btn-create-card").onclick = createTask;
 $("#btn-refresh").onclick = () => loadRuns(true);
 $("#btn-back").onclick = closeFile;
 $("#task-select").onchange = (e) => {

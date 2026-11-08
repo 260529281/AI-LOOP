@@ -17,8 +17,10 @@ def _artifact_text(ctx: Ctx, name: str) -> str:
     return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
 
-def _eval(check: dict, ctx: Ctx) -> tuple[bool, str]:
+def _eval(check: dict, ctx: Ctx) -> tuple[bool | None, str]:
     kind = check["type"]
+    if kind == "semantic":
+        return None, "语义验收：确定性模式不判（未机检），闭环跑交给审批官，外部校验由人工确认"
     if kind == "artifact_contains_all":
         text = _artifact_text(ctx, check["artifact"])
         missing = [n for n in check["needles"] if n not in text]
@@ -27,6 +29,20 @@ def _eval(check: dict, ctx: Ctx) -> tuple[bool, str]:
     if kind == "evidence_true":
         value = ctx.evidence.get(check["key"])
         return value is True, f"{check['key']}={value!r}"
+    if kind in ("patch_contains_all", "patch_contains_any"):
+        from .behavior import changed_blob
+
+        blob = changed_blob(ctx)
+        needles = check.get("needles") or []
+        missing = [n for n in needles if n not in blob]
+        hit = [n for n in needles if n in blob]
+        if kind == "patch_contains_all":
+            ok = not missing
+            detail = "全部命中" if ok else f"补丁文件缺关键词：{', '.join(missing)}"
+        else:
+            ok = bool(hit)
+            detail = f"命中：{', '.join(hit)}" if ok else f"补丁文件一个关键词都没命中：{', '.join(needles)}"
+        return ok, detail
     if kind == "behavior":
         item = (ctx.evidence.get("behavior") or {}).get(check["probe"])
         if not item:
@@ -51,7 +67,7 @@ def judge(ctx: Ctx, l1: dict, criteria_list: list[dict] | None = None, label: st
             "evidence": item["evidence"],
         }
         for item in criteria
-        if not item["passed"]
+        if item["passed"] is False
     ]
     blocking += [
         {
@@ -64,7 +80,7 @@ def judge(ctx: Ctx, l1: dict, criteria_list: list[dict] | None = None, label: st
         if not check["ok"]
     ]
 
-    passed = all(item["passed"] for item in criteria) and l1["ok"]
+    passed = all(item["passed"] for item in criteria if item["passed"] is not None) and l1["ok"]
     verdict = {
         "stage": ctx.stage["id"],
         "attempt": ctx.attempt,
@@ -73,6 +89,7 @@ def judge(ctx: Ctx, l1: dict, criteria_list: list[dict] | None = None, label: st
         "verdict": "pass" if passed else "revise",
         "criteria": criteria,
         "blocking": blocking,
+        "skipped_semantic": [item["id"] for item in criteria if item["passed"] is None],
         "evidence_checked": {
             "l1": [f"{c['check']}={c['ok']}" for c in l1["checks"]],
             "behavior_ok": ctx.evidence.get("behavior_ok", "-"),
