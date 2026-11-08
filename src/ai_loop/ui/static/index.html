@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ai-loop · 闭环编排台</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">AL</div>
+    <div class="brand-text">
+      <div class="title">ai-loop 闭环编排台</div>
+      <div class="sub">本地独立入口 · 只读写本项目 runs/</div>
+    </div>
+  </div>
+  <div class="badges">
+    <span class="badge" id="badge-model">模型 …</span>
+    <span class="badge" id="badge-live">空闲</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="side-head">
+      <span>运行历史</span>
+      <button class="ghost" id="btn-refresh">刷新</button>
+    </div>
+    <div id="run-list" class="run-list"></div>
+  </aside>
+
+  <main class="main">
+    <section class="composer card">
+      <div class="composer-row">
+        <label class="field">任务卡
+          <select id="task-select"></select>
+        </label>
+        <button class="primary" id="btn-start">开始闭环</button>
+      </div>
+      <textarea id="requirement" rows="3" spellcheck="false" placeholder="需求正文（本次运行专用副本，可改）"></textarea>
+      <details class="advanced">
+        <summary>高级选项</summary>
+        <div class="advanced-body">
+          <label class="field">模型
+            <select id="backend-select">
+              <option value="">跟随 local.env</option>
+              <option value="cloud">真实模型</option>
+              <option value="stub">离线桩（确定性）</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="drill"> 注入缺陷演练（验证门禁能否拦住）</label>
+        </div>
+      </details>
+      <details class="advanced">
+        <summary>校验外部补丁（不调用模型）</summary>
+        <div class="advanced-body col">
+          <textarea id="patch-input" rows="6" spellcheck="false" placeholder="粘贴 Qoder 产出的 git 补丁（以 diff --git 开头）：只跑落地、机械校验、行为探针，审批用自动 rubric，不花模型额度"></textarea>
+          <div class="row-end"><button class="primary" id="btn-verify">开始校验</button></div>
+        </div>
+      </details>
+      <div class="hint" id="compose-hint">一次只跑一条；关掉网页不会打断运行。</div>
+    </section>
+
+    <section id="run-header" class="run-header"></section>
+    <section id="timeline" class="timeline">
+      <div class="empty">左侧选一条运行，或用上面的任务卡发起新的闭环。</div>
+    </section>
+  </main>
+
+  <aside class="inspector">
+    <div class="side-head">
+      <span id="inspector-title">产物</span>
+      <button class="ghost hidden" id="btn-back">返回列表</button>
+    </div>
+    <div id="file-list" class="file-list"></div>
+    <div id="file-view" class="file-view hidden">
+      <div class="file-name" id="file-name"></div>
+      <pre id="file-body"></pre>
+    </div>
+    <div class="report-box">
+      <div class="side-head"><span>运行报告</span></div>
+      <pre id="report">运行结束后生成</pre>
+    </div>
+  </aside>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

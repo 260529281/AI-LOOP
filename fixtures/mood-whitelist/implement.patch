@@ -1,0 +1,99 @@
+diff --git a/app/src/main/java/com/example/qqavatar/AvatarViewModel.kt b/app/src/main/java/com/example/qqavatar/AvatarViewModel.kt
+index 5a3462d..6a488dc 100644
+--- a/app/src/main/java/com/example/qqavatar/AvatarViewModel.kt
++++ b/app/src/main/java/com/example/qqavatar/AvatarViewModel.kt
+@@ -51,6 +51,7 @@ data class AvatarUiState(
+     val lines: List<ChatLine> = emptyList(),
+     val images: Map<Emotion, Bitmap> = emptyMap(),
+     val blinkImages: Map<Emotion, Bitmap> = emptyMap(),
++    val allowedEmotions: Set<Emotion> = Emotion.entries.toSet(),
+ )
+ 
+ class AvatarViewModel(app: Application) : AndroidViewModel(app) {
+@@ -59,7 +60,7 @@ class AvatarViewModel(app: Application) : AndroidViewModel(app) {
+     private val historyFile = File(app.filesDir, "history.json")
+     private val nextId = AtomicLong(1)
+ 
+-    private val _state = MutableStateFlow(AvatarUiState(settings = readSettings()))
++    private val _state = MutableStateFlow(AvatarUiState(settings = readSettings(), allowedEmotions = readAllowedEmotions()))
+     val state: StateFlow<AvatarUiState> = _state.asStateFlow()
+ 
+     // SSE 连接不能有读超时。
+@@ -93,6 +94,25 @@ class AvatarViewModel(app: Application) : AndroidViewModel(app) {
+         token = prefs.getString("token", "").orEmpty(),
+     )
+ 
++    // 没存过就是默认全开：老用户升级后行为不变。
++    private fun readAllowedEmotions(): Set<Emotion> {
++        val saved = prefs.getStringSet("allowedEmotions", null) ?: return Emotion.entries.toSet()
++        val parsed = saved.mapNotNull { runCatching { Emotion.valueOf(it) }.getOrNull() }
++        return parsed.toSet()
++    }
++
++    fun toggleEmotionAllowed(emotion: Emotion) {
++        val current = _state.value.allowedEmotions
++        val next = if (emotion in current) current - emotion else current + emotion
++        prefs.edit().putStringSet("allowedEmotions", next.map { it.name }.toSet()).apply()
++        _state.update { it.copy(allowedEmotions = next) }
++        // 当前心情被移出白名单时立刻回退，不必等下一次事件。
++        if (_state.value.emotion !in next) {
++            emotionResetJob?.cancel()
++            _state.update { it.copy(emotion = Emotion.NEUTRAL) }
++        }
++    }
++
+     fun saveSettings(url: String, token: String) {
+         val cleanUrl = url.trim().let { if (it.startsWith("http")) it else "http://$it" }.trimEnd('/')
+         val cleanToken = token.trim()
+@@ -380,7 +400,9 @@ class AvatarViewModel(app: Application) : AndroidViewModel(app) {
+ 
+     private fun setEmotion(emotion: Emotion, revertAfterMs: Long) {
+         emotionResetJob?.cancel()
+-        _state.update { it.copy(emotion = emotion) }
++        // 白名单之外的心情一律落回「平常」。
++        val target = if (emotion in _state.value.allowedEmotions) emotion else Emotion.NEUTRAL
++        _state.update { it.copy(emotion = target) }
+         if (revertAfterMs > 0) {
+             emotionResetJob = viewModelScope.launch {
+                 delay(revertAfterMs)
+diff --git a/app/src/main/java/com/example/qqavatar/MainActivity.kt b/app/src/main/java/com/example/qqavatar/MainActivity.kt
+index edaf477..ca80699 100644
+--- a/app/src/main/java/com/example/qqavatar/MainActivity.kt
++++ b/app/src/main/java/com/example/qqavatar/MainActivity.kt
+@@ -46,6 +46,7 @@ import androidx.compose.foundation.text.KeyboardActions
+ import androidx.compose.foundation.text.KeyboardOptions
+ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.material3.Button
++import androidx.compose.material3.Checkbox
+ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.OutlinedTextField
+@@ -657,6 +658,28 @@ private fun SettingsScreen(state: AvatarUiState, vm: AvatarViewModel, onBack: ()
+ 
+         HorizontalDivider(Modifier.padding(vertical = 22.dp), color = Color(0xFF1B3446))
+ 
++        Text("心情白名单", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextMain)
++        Text(
++            "只显示勾选的心情，勾选即时生效。收到没勾选的心情时，立绘回退到「平常」；默认四套全开。",
++            fontSize = 12.sp,
++            color = TextDim,
++            modifier = Modifier.padding(top = 4.dp),
++        )
++        for (emotion in Emotion.entries) {
++            Row(
++                Modifier.fillMaxWidth().padding(top = 6.dp),
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                Text(emotion.title, color = TextMain, fontSize = 15.sp, modifier = Modifier.weight(1f))
++                Checkbox(
++                    checked = emotion in state.allowedEmotions,
++                    onCheckedChange = { vm.toggleEmotionAllowed(emotion) },
++                )
++            }
++        }
++
++        HorizontalDivider(Modifier.padding(vertical = 22.dp), color = Color(0xFF1B3446))
++
+         Text("表情立绘", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextMain)
+         Text(
+             "内置「大肥鱼」四套动态立绘（含眨眼帧），在这里导入透明背景 PNG 可逐张替换；没导入的表情会用「平常」。",

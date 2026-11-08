@@ -1,0 +1,41 @@
+diff --git a/app/src/main/java/com/example/qqavatar/MainActivity.kt b/app/src/main/java/com/example/qqavatar/MainActivity.kt
+index edaf477..ca80699 100644
+--- a/app/src/main/java/com/example/qqavatar/MainActivity.kt
++++ b/app/src/main/java/com/example/qqavatar/MainActivity.kt
+@@ -46,6 +46,7 @@ import androidx.compose.foundation.text.KeyboardActions
+ import androidx.compose.foundation.text.KeyboardOptions
+ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.material3.Button
++import androidx.compose.material3.Checkbox
+ import androidx.compose.material3.HorizontalDivider
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.OutlinedTextField
+@@ -657,6 +658,28 @@ private fun SettingsScreen(state: AvatarUiState, vm: AvatarViewModel, onBack: ()
+ 
+         HorizontalDivider(Modifier.padding(vertical = 22.dp), color = Color(0xFF1B3446))
+ 
++        Text("心情白名单", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextMain)
++        Text(
++            "只显示勾选的心情，勾选即时生效。收到没勾选的心情时，立绘回退到「平常」；默认四套全开。",
++            fontSize = 12.sp,
++            color = TextDim,
++            modifier = Modifier.padding(top = 4.dp),
++        )
++        for (emotion in Emotion.entries) {
++            Row(
++                Modifier.fillMaxWidth().padding(top = 6.dp),
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                Text(emotion.title, color = TextMain, fontSize = 15.sp, modifier = Modifier.weight(1f))
++                Checkbox(
++                    checked = emotion in state.allowedEmotions,
++                    onCheckedChange = { vm.toggleEmotionAllowed(emotion) },
++                )
++            }
++        }
++
++        HorizontalDivider(Modifier.padding(vertical = 22.dp), color = Color(0xFF1B3446))
++
+         Text("表情立绘", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextMain)
+         Text(
+             "内置「大肥鱼」四套动态立绘（含眨眼帧），在这里导入透明背景 PNG 可逐张替换；没导入的表情会用「平常」。",

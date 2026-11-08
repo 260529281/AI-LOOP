@@ -1,0 +1,107 @@
+# 流水线定义：每环有产物、验收标准（L2 审批官用）、机械校验（L1 用）。
+project:
+  root: "C:/AI/DeepSeek/02-项目/qq-avatar-app"
+  exclude_dirs: [build, .gradle, .kotlin, .idea]
+  build:
+    command: [gradle.bat, --offline, -q, assembleDebug]
+    java_home: "C:/Users/Lenovo/AppData/Local/Android/tools/jdk-21/jdk-21.0.13+9"
+    gradle_bin: "C:/Users/Lenovo/AppData/Local/Android/tools/gradle-8.9/bin"
+    timeout_sec: 600
+
+gates:
+  max_revisions: 2      # 同一环返工上限，超过就升级，不许无限循环
+  arbiter: arbiter
+  fail_closed: true     # 审批官输出不可解析/异常一律视为不通过
+
+stages:
+  - id: s1-decompose
+    title: 拆解
+    agent: planner
+    produces: [spec.md]
+    checks: [artifact_nonempty]
+    output_contract: 输出 Markdown 拆解文档，含子任务、每个子任务的产物与验收、以及实现级的验收标准清单。
+    criteria:
+      - id: C1
+        text: 拆出至少两个子任务，每个都写明产物与验收
+        check: {type: artifact_contains_all, artifact: spec.md, needles: ["子任务 1", "子任务 2", "产物", "验收"]}
+      - id: C2
+        text: 写明白名单默认全开并且持久化
+        check: {type: artifact_contains_all, artifact: spec.md, needles: ["默认", "持久化"]}
+      - id: C3
+        text: 写明未勾选的心情要回退到平常
+        check: {type: artifact_contains_all, artifact: spec.md, needles: ["回退", "平常"]}
+
+  - id: s2-implement
+    title: 实现
+    agent: android-dev
+    consumes: [s1-decompose/spec.md]
+    readback: [上游结论, 依赖契约, 疑点]
+    produces: [change.patch]
+    checks: [patch_scope, patch_applies, build]
+    patch_scope: ["app/src/main/java/**"]
+    source_context:
+      - app/src/main/java/com/example/qqavatar/AvatarViewModel.kt
+      - app/src/main/java/com/example/qqavatar/MainActivity.kt
+    output_contract: |
+      输出被改动文件的完整内容，每个文件一个区块，格式严格如下（路径相对项目根）：
+      <<<FILE: app/src/main/java/...>>>
+      该文件的完整内容，未改动的部分逐字保留，不得省略、不得用省略号概括
+      <<<END FILE>>>
+      每个需要改的文件都完整输出一遍；不要输出 diff，不要 Markdown 围栏，不要解释；改动必须落在允许路径内。
+    # 行为验收：探针只在补丁改到的文件里找实现证据，不绑定变量名/控件名。
+    behavior:
+      probes: [default_all, persisted, fallback, toggle_ui]
+    criteria:
+      - id: C1
+        text: 改动只落在 app/src/main/java 下
+        check: {type: evidence_true, key: scope_ok}
+      - id: C2
+        text: 补丁能干净应用到项目副本
+        check: {type: evidence_true, key: patch_applied}
+      - id: C3
+        text: 默认全开——用户没保存过设置时，四种心情全部允许
+        check: {type: behavior, probe: default_all}
+      - id: C4
+        text: 勾选持久化——开关写入本地存储，重启后能读回同一份集合
+        check: {type: behavior, probe: persisted}
+      - id: C5
+        text: 未勾选回退平常——收到被关掉的心情时立绘显示「平常」
+        check: {type: behavior, probe: fallback}
+      - id: C6
+        text: 设置页能逐项开关心情，勾选后立即生效
+        check: {type: behavior, probe: toggle_ui}
+      - id: C7
+        text: assembleDebug 通过
+        check: {type: evidence_true, key: build_ok}
+
+  - id: s3-review
+    title: 审查
+    agent: reviewer
+    consumes: [s1-decompose/spec.md, s2-implement/change.patch]
+    readback: [上游结论, 依赖契约, 疑点]
+    produces: [review.md]
+    checks: [artifact_nonempty]
+    output_contract: 输出 Markdown 审查结论，必须含「阻塞项」小节并引用构建证据；没有阻塞项就写「无」。
+    criteria:
+      - id: C1
+        text: 审查结论里列出阻塞项（没有就显式写无）
+        check: {type: artifact_contains_all, artifact: review.md, needles: ["阻塞项"]}
+      - id: C2
+        text: 结论引用了构建日志等证据
+        check: {type: artifact_contains_all, artifact: review.md, needles: ["证据", "assembleDebug"]}
+
+  - id: s4-accept
+    title: 验收
+    agent: acceptance
+    consumes: [s1-decompose/spec.md, s2-implement/change.patch, s3-review/review.md]
+    readback: [上游结论, 依赖契约, 疑点]
+    produces: [acceptance.md]
+    checks: [artifact_nonempty]
+    output_contract: 输出 Markdown 验收结论，逐条对照验收标准给 PASS/FAIL，每条都要引用证据来源。
+    criteria:
+      - id: C1
+        text: 逐条给出验收标准的 PASS/FAIL 结论
+        check: {type: artifact_contains_all, artifact: acceptance.md, needles: ["PASS", "C1", "C7"]}
+      - id: C2
+        text: 验收结论基于审查结论与构建证据
+        check: {type: artifact_contains_all, artifact: acceptance.md, needles: ["证据", "审查"]}

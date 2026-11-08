@@ -1,0 +1,15 @@
+id: mood-whitelist
+title: 设置页新增心情白名单
+project: qq-avatar-app
+requirement: |
+  在手机端 App 的设置页加「心情白名单」：四种表情（平常 / 开心 / 思考 / 难过）默认全开；
+  用户可以逐项勾选允许显示的心情；hub 推来一个未勾选的心情时，立绘回退显示「平常」；
+  勾选状态需要持久化，App 重启后保留。范围仅限手机端，不改 qq-bridge。
+acceptance:
+  - 默认四套全开，没动过设置时行为和现在一致
+  - 设置页能逐项开关心情，勾选后立即生效
+  - 勾选状态持久化，进程重启后仍然生效
+  - 收到未勾选的心情时立绘回退到「平常」
+  - 改动只落在 app/src/main/java 下，且 assembleDebug 通过
+risk_tier: medium
+patch_paths: ["app/src/main/java/**"]
