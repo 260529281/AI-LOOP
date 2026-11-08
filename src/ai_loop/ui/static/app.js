@@ -13,9 +13,8 @@ const state = {
   stalls: 0,
   stages: {},
   stageOrder: [],
+  expandedGroups: new Set(),
 };
-
-const AGENT_COLORS = ["#3f7dfb", "#7a5cff", "#2fb3a3", "#d98a2b", "#e05c7a"];
 
 const CHECK_TEXT = {
   artifact_nonempty: "产物非空",
@@ -93,13 +92,11 @@ async function loadRuns(reselect = false) {
   }
   state.runs.forEach((run) => {
     const item = el("div", "run-item" + (run.run_id === state.runId ? " active" : "") + (run.stale ? " stale" : ""));
-    const line = el("div", "rid");
-    line.appendChild(el("span", "dot " + (run.stale ? "error" : run.status)));
-    line.appendChild(el("span", "", run.run_id));
-    item.appendChild(line);
+    item.appendChild(el("span", "dot " + (run.stale ? "error" : run.status)));
+    const label = (run.mode === "verify" ? "补丁 · " : "") + (run.title || run.run_id);
+    item.appendChild(el("span", "rtitle", label));
     const stateWord = run.stale ? "已中断" : statusText(run.status);
-    const modeTag = run.mode === "verify" ? "外部补丁 · " : "";
-    item.appendChild(el("div", "rtitle", modeTag + (run.title ? run.title + " · " : "") + stateWord));
+    item.title = `${run.run_id} · ${run.mode === "verify" ? "外部补丁校验" : "闭环"} · ${stateWord}`;
     item.onclick = () => selectRun(run.run_id);
     list.appendChild(item);
   });
@@ -333,10 +330,7 @@ function renderEvent(ev) {
     case "stage_start": {
       const card = el("div", "agent");
       const meta = stageMeta(sid);
-      const idx = state.stageOrder.indexOf(sid);
       const av = el("div", "avatar", (meta.name || sid).slice(0, 1));
-      av.style.background = "#1d2634";
-      av.style.color = AGENT_COLORS[idx % AGENT_COLORS.length];
       card.appendChild(av);
       const body = el("div", "agent-body");
       const head = el("div", "agent-head");
@@ -491,13 +485,25 @@ function renderArtifacts(detail) {
     const files = groups.get(sid);
     if (!files || !files.length) return;
     list.appendChild(el("div", "file-group", sid ? `${sid} · ${agentName(sid)}` : "运行根目录"));
-    files.forEach((f) => {
+    const expanded = state.expandedGroups.has(sid);
+    const shown = expanded ? files : files.slice(0, 2);
+    shown.forEach((f) => {
       const item = el("div", "file-item");
       item.appendChild(el("span", "", f.name));
       item.appendChild(el("span", "sz", fmtBytes(f.bytes)));
       item.onclick = () => openFile(f.rel);
       list.appendChild(item);
     });
+    if (files.length > 2) {
+      const more = el("div", "file-more", expanded ? "收起" : `… 还有 ${files.length - 2} 个`);
+      more.onclick = () => {
+        if (expanded) state.expandedGroups.delete(sid);
+        else state.expandedGroups.add(sid);
+        list.dataset.sig = "";
+        renderArtifacts(detail);
+      };
+      list.appendChild(more);
+    }
   });
   if (!(detail.artifacts || []).length) list.appendChild(el("div", "empty", "还没有产物"));
 }
@@ -567,7 +573,8 @@ async function createTask() {
     fillTasks(out.task_id);
     ["#card-title", "#card-requirement", "#card-acceptance", "#card-paths", "#card-keywords"]
       .forEach((s) => { $(s).value = ""; });
-    $("#new-card-panel").open = false;
+    $("#new-card-panel").classList.add("hidden");
+    $("#btn-new-card").classList.remove("on");
     toast(`任务卡已保存：${out.file}，已选中，可直接开始闭环或校验外部补丁`);
   } catch (err) {
     toast(err.message, true);
@@ -646,9 +653,19 @@ async function startVerify() {
   }
 }
 
+function toggleNewCard(force) {
+  const panel = $("#new-card-panel");
+  const show = force !== undefined ? force : panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !show);
+  $("#btn-new-card").classList.toggle("on", show);
+  if (show) $("#card-title").focus();
+}
+
 $("#btn-start").onclick = startRun;
 $("#btn-verify").onclick = startVerify;
 $("#btn-create-card").onclick = createTask;
+$("#btn-new-card").onclick = () => toggleNewCard();
+$("#btn-close-card").onclick = () => toggleNewCard(false);
 $("#btn-refresh").onclick = () => loadRuns(true);
 $("#btn-back").onclick = closeFile;
 $("#task-select").onchange = (e) => {
